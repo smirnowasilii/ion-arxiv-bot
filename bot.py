@@ -349,18 +349,21 @@ class State:
             os.replace(tmp, self.path)
 
 
-def collect_new(arxiv: ArxivClient, cls: Classifier, state: State, cfg: dict):
-    """Return (new relevant papers oldest-first, ids of everything fetched, timestamp)."""
+def collect_new(arxiv: ArxivClient, cls: Classifier, state: State, cfg: dict,
+                test_days: float | None = None):
+    """Return (new relevant papers oldest-first, ids of everything fetched, timestamp).
+    test_days: resend everything from the last N days, ignoring what was already sent."""
     sched = cfg["schedule"]
     now = datetime.now(timezone.utc)
     first = state.last_check is None
-    max_age = timedelta(days=float(sched.get("first_run_lookback_days", 3) if first
-                                   else sched.get("max_age_days", 14)))
+    days = test_days or (sched.get("first_run_lookback_days", 3) if first
+                         else sched.get("max_age_days", 14))
+    max_age = timedelta(days=float(days))
     papers = arxiv.search()
     fresh = []
     with state.lock:
         for p in papers:
-            if p.id in state.seen or now - p.published > max_age:
+            if (p.id in state.seen and not test_days) or now - p.published > max_age:
                 continue
             if cls.relevant(p):
                 fresh.append(p)
@@ -463,13 +466,13 @@ class Bot:
             self.tg.send(chat_id, m)
             time.sleep(pause)
 
-    def check_and_deliver(self) -> int:
+    def check_and_deliver(self, test_days: float | None = None) -> int:
         with self.check_lock:
             chats = self.chats()
             if not chats:
                 log.info("no subscribers yet — skipping check")
                 return 0
-            fresh, ids, now = collect_new(self.arxiv, self.cls, self.state, self.cfg)
+            fresh, ids, now = collect_new(self.arxiv, self.cls, self.state, self.cfg, test_days)
             for chat in chats:
                 if not fresh:
                     break
@@ -639,6 +642,8 @@ def main():
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--state", default="state.json")
     ap.add_argument("--days", type=float, help="dry-run: look back this many days (default 3)")
+    ap.add_argument("--test-days", type=float, default=0,
+                    help="once: resend all relevant papers from the last N days, even if already sent")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
 
@@ -665,7 +670,7 @@ def main():
     if args.mode == "once":
         if not bot.chats():
             sys.exit("No chats to post to: set TELEGRAM_CHAT_ID or default_chat_ids in config.yaml.")
-        n = bot.check_and_deliver()
+        n = bot.check_and_deliver(test_days=args.test_days or None)
         log.info("posted %d new paper(s)", n)
     else:
         bot.run()

@@ -8,6 +8,10 @@ on:
   schedule:
     - cron: "17 */4 * * *"
   workflow_dispatch:
+    inputs:
+      test_days:
+        description: "Test: resend all papers from the last N days (0 = normal run, only new papers)"
+        default: "0"
 
 permissions:
   contents: write   # to commit state.json (remembers which papers were already sent)
@@ -25,8 +29,14 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - run: python bot.py once
+      - run: |
+          if [ "${TEST_DAYS:-0}" != "0" ]; then
+            python bot.py once --test-days "$TEST_DAYS"
+          else
+            python bot.py once
+          fi
         env:
+          TEST_DAYS: ${{ inputs.test_days }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       - name: Save state
