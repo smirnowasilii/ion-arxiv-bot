@@ -1,0 +1,302 @@
+# ─────────────────────────────────────────────────────────────────────
+#  Trapped-ion arXiv bot — configuration
+#  Terms are case-insensitive and match at the start of a word, so
+#  "qubit" also matches "qubits". Spaces and hyphens are interchangeable
+#  ("trapped ion" matches "trapped-ion"). Prefix a term with  re:  to
+#  write a raw regular expression instead.
+#  LaTeX in titles/abstracts is simplified before matching, so
+#  "$^{40}$Ca$^+$" is matched as "⁴⁰Ca⁺".
+# ─────────────────────────────────────────────────────────────────────
+
+telegram:
+  token_env: TELEGRAM_BOT_TOKEN   # env var that holds the token from @BotFather
+  default_chat_ids: []            # chats/channels that always receive updates, e.g. [-1001234567890]
+  allowed_user_ids: []            # if not empty, only these Telegram user ids can use commands
+  mode: individual                # individual = one message per paper | compact = one digest list
+  abstract_chars: 600             # abstract excerpt length in individual mode (0 = no abstract)
+
+schedule:
+  check_every_hours: 3            # arXiv publishes once a day (~20:00 US Eastern, Sun–Thu)
+  first_run_lookback_days: 3      # how far back to look the very first time
+  max_age_days: 14                # never post papers first submitted longer ago than this
+
+arxiv:
+  max_results: 200                # newest N matching papers fetched per check
+  categories:
+    - quant-ph
+    - physics.atom-ph
+    - physics.optics
+    - physics.ins-det
+    - physics.app-ph
+    - physics.chem-ph
+    - cond-mat.quant-gas
+    - nucl-ex
+    - hep-ex
+  # Broad net sent to the arXiv API (searched in title + abstract + comments).
+  query_terms:
+    - trapped ion
+    - trapped ions
+    - ion trap
+    - ion traps
+    - Paul trap
+    - Penning trap
+    - ion crystal
+    - Coulomb crystal
+    - ion chain
+    - ion qubit
+    - ion qubits
+    - single ion
+    - QCCD
+    - ion clock
+    - highly charged ion
+    - highly charged ions
+    - trapped molecular ion
+
+relevance:
+  # A paper is kept only if its title/abstract matches at least one of these…
+  require_any:
+    - trapped ion
+    - trapped atomic ion
+    - trapped molecular ion
+    - ion trap
+    - Paul trap
+    - Penning trap
+    - radio frequency trap
+    - rf trap
+    - surface electrode trap
+    - surface trap
+    - ion crystal
+    - Coulomb crystal
+    - ion chain
+    - ion string
+    - ion qubit
+    - single ion
+    - QCCD
+    - quantum charge coupled device
+    - ion clock
+    - highly charged ion
+    # ion species written as Ca+, ⁴⁰Ca⁺, Yb⁺, Th³⁺ …
+    - 're:(?<![A-Za-z])(?:Be|Mg|Al|Ca|Sr|Ba|Yb|Lu|Hg|In|Th|Ra|Zn|Cd|Er|Ar|Xe)[⁰¹²³⁴⁵⁶⁷⁸⁹]*⁺(?!\w)'
+    - 're:(?<![A-Za-z])(?:Be|Mg|Al|Ca|Sr|Ba|Yb|Lu|Hg)\+\s?ions?'
+  # …and none of these.
+  exclude_any:
+    - ion implantation
+    - single ion implant
+    - lithium ion
+    - ion battery
+    - heavy ion collision
+    - ion exchange
+  # Phrases that suggest experimental work → adds a 🧪 tag.
+  experiment_markers:
+    - we demonstrate
+    - we experimentally
+    - experimentally demonstrate
+    - experimental demonstration
+    - experimental realization
+    - experimental realisation
+    - we realize
+    - we realise
+    - we observe
+    - we measure
+    - we implement
+    - we perform
+    - in our experiment
+    - experimentally observed
+    - we report the first
+    - we have built
+    - we characterize
+    - we characterise
+    - we operate
+    - experimental results
+
+other_topic_label: "🔬 Other"
+
+# A paper can carry several topic tags. Keys are what you type in /topic <key>.
+topics:
+  computing:
+    label: "💻 Quantum computing"
+    keywords:
+      - quantum comput
+      - quantum processor
+      - quantum computer
+      - qubit
+      - qudit
+      - two qubit gate
+      - entangling gate
+      - gate fidelity
+      - Mølmer–Sørensen
+      - Molmer Sorensen
+      - MS gate
+      - light shift gate
+      - geometric phase gate
+      - QCCD
+      - shuttling
+      - ion transport
+      - error correction
+      - logical qubit
+      - fault tolerant
+      - mid circuit
+      - quantum algorithm
+      - quantum volume
+      - randomized benchmarking
+      - circuit
+      - crosstalk
+
+  simulation:
+    label: "🧲 Quantum simulation"
+    keywords:
+      - quantum simulat
+      - analog simulat
+      - spin model
+      - Ising
+      - XY model
+      - Heisenberg model
+      - Hubbard
+      - many body
+      - thermaliz
+      - prethermal
+      - many body localization
+      - lattice gauge
+      - quench
+      - dynamical phase transition
+      - time crystal
+      - Floquet
+      - spin boson
+      - information scrambling
+      - OTOC
+      - out of time order
+      - entanglement growth
+      - phase transition
+      - non Hermitian
+      - open quantum system
+
+  clocks:
+    label: "⏱️ Clocks & frequency metrology"
+    keywords:
+      - optical clock
+      - atomic clock
+      - ion clock
+      - nuclear clock
+      - clock transition
+      - clock comparison
+      - frequency standard
+      - frequency ratio
+      - fractional frequency
+      - systematic uncertainty
+      - quantum logic spectroscopy
+      - quantum logic clock
+      - thorium 229
+      - ²²⁹Th
+      - 229Th
+      - time dilation
+      - blackbody radiation shift
+      - frequency comb
+
+  networks:
+    label: "🔗 Networks & quantum memories"
+    keywords:
+      - quantum network
+      - network node
+      - quantum repeater
+      - quantum memory
+      - quantum memories
+      - memory node
+      - remote entanglement
+      - heralded entanglement
+      - photonic interconnect
+      - photonic link
+      - ion photon
+      - photon entanglement
+      - entanglement distribution
+      - distributed quantum
+      - teleportation
+      - frequency conversion
+      - telecom
+      - optical fiber
+      - optical fibre
+      - optical cavity
+      - fiber cavity
+      - cavity QED
+      - coherence time
+      - storage time
+      - multiplexed
+
+  sensing:
+    label: "📡 Sensing & fundamental physics"
+    keywords:
+      - quantum sensing
+      - quantum sensor
+      - sensing
+      - magnetometr
+      - electric field sensing
+      - force sensing
+      - spin squeezing
+      - squeezed state
+      - entanglement enhanced
+      - Heisenberg limit
+      - quantum metrology
+      - dark matter
+      - fifth force
+      - new physics
+      - Lorentz violation
+      - fine structure constant
+      - variation of fundamental constants
+      - g factor
+      - electric dipole moment
+      - EDM
+      - isotope shift
+      - King plot
+      - parity violation
+      - precision spectroscopy
+      - mass measurement
+      - antiproton
+      - antimatter
+
+  hardware:
+    label: "🛠️ Control & hardware"
+    keywords:
+      - laser cooling
+      - sympathetic cooling
+      - ground state cooling
+      - sideband cooling
+      - EIT cooling
+      - Doppler cooling
+      - heating rate
+      - anomalous heating
+      - micromotion
+      - integrated photonic
+      - integrated optic
+      - waveguide
+      - trap fabrication
+      - microfabricat
+      - surface electrode
+      - cryogenic
+      - individual addressing
+      - state detection
+      - readout
+      - state preparation
+      - photoionization
+      - ion loading
+      - magnetic field gradient
+      - microwave
+      - laser system
+      - optical tweezer
+      - control electronics
+      - scalab
+
+  exotic:
+    label: "⚗️ Molecular, HCI & hybrid systems"
+    keywords:
+      - molecular ion
+      - trapped molecule
+      - highly charged ion
+      - HCI
+      - ion atom
+      - hybrid trap
+      - ion neutral
+      - cold collision
+      - cold chemistry
+      - Rydberg ion
+      - positron
+      - antihydrogen
+      - Coulomb crystal

@@ -1,0 +1,38 @@
+# Runs the bot in "once" mode every 4 hours on GitHub's servers — no machine of your own needed.
+# Repo → Settings → Secrets and variables → Actions → add:
+#   TELEGRAM_BOT_TOKEN  – token from @BotFather
+#   TELEGRAM_CHAT_ID    – your chat id (send /start to the bot while it runs locally once, or use @userinfobot)
+name: arxiv-trapped-ion-watch
+
+on:
+  schedule:
+    - cron: "17 */4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write   # to commit state.json (remembers which papers were already sent)
+
+concurrency:
+  group: arxiv-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python bot.py once
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      - name: Save state
+        run: |
+          git config user.name "arxiv-bot"
+          git config user.email "arxiv-bot@users.noreply.github.com"
+          git add state.json
+          git diff --cached --quiet || git commit -m "Update seen papers [skip ci]"
+          git push
