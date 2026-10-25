@@ -14,6 +14,8 @@ telegram:
   allowed_user_ids: []            # if not empty, only these Telegram user ids can use commands
   mode: individual                # individual = one message per paper | compact = one digest list
   abstract_chars: 600             # abstract excerpt length in individual mode (0 = no abstract)
+  notify_when_empty: true         # send a silent "nothing new" message when a check finds nothing
+  timezone: Europe/Moscow         # for the time shown in that message
 
 schedule:
   check_every_hours: 3            # arXiv publishes once a day (~20:00 US Eastern, Sun–Thu)

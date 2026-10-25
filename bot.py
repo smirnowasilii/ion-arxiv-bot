@@ -19,6 +19,7 @@ import sys
 import threading
 import time
 import xml.etree.ElementTree as ET
+from zoneinfo import ZoneInfo
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -407,9 +408,9 @@ class Telegram:
             raise TelegramError(data.get("description", "unknown error"), data.get("error_code"))
         raise TelegramError(f"Telegram unreachable for {method}")
 
-    def send(self, chat_id: int, text: str):
+    def send(self, chat_id: int, text: str, silent: bool = False):
         return self.call("sendMessage", chat_id=chat_id, text=text[:TG_LIMIT], parse_mode="HTML",
-                         link_preview_options={"is_disabled": True})
+                         link_preview_options={"is_disabled": True}, disable_notification=silent)
 
 
 def env_chat_ids() -> set[int]:
@@ -453,6 +454,11 @@ class Bot:
         self.mode = t.get("mode", "individual")
         self.abstract_chars = int(t.get("abstract_chars", 600))
         self.interval_h = float(cfg["schedule"].get("check_every_hours", 3))
+        self.notify_empty = bool(t.get("notify_when_empty", True))
+        try:
+            self.tz = ZoneInfo(t.get("timezone", "Europe/Moscow"))
+        except Exception:
+            self.tz = timezone.utc
         self.check_lock = threading.Lock()
 
     # ---- delivery ----
@@ -471,18 +477,26 @@ class Bot:
             self.tg.send(chat_id, m)
             time.sleep(pause)
 
-    def check_and_deliver(self, test_days: float | None = None) -> int:
+    def check_and_deliver(self, test_days: float | None = None, notify_empty: bool | None = None) -> int:
         with self.check_lock:
             chats = self.chats()
             if not chats:
                 log.info("no subscribers yet — skipping check")
                 return 0
             fresh, ids, now = collect_new(self.arxiv, self.cls, self.state, self.cfg, test_days)
+            if notify_empty is None:
+                notify_empty = self.notify_empty
+            if not fresh and notify_empty:
+                stamp = now.astimezone(self.tz).strftime("%d %b, %H:%M")
+                note = f"🔍 Checked arXiv ({stamp}) — nothing new."
             for chat in chats:
-                if not fresh:
+                if not fresh and not notify_empty:
                     break
                 try:
-                    self.send_papers(chat, fresh)
+                    if fresh:
+                        self.send_papers(chat, fresh)
+                    else:
+                        self.tg.send(chat, note, silent=True)
                 except TelegramError as e:
                     log.error("could not deliver to %s: %s", chat, e)
                     if e.code in (400, 403) and chat in self.state.subscribers:
@@ -588,12 +602,10 @@ class Bot:
         self._show(chat_id, papers, "Nothing found for that search.")
 
     def cmd_check(self, chat_id, arg):
-        subscribed = chat_id in self.chats()
-        n = self.check_and_deliver()
-        if not subscribed:
+        if chat_id not in self.chats():
             self.reply(chat_id, "This chat isn't subscribed — use /subscribe first.")
-        elif n == 0:
-            self.reply(chat_id, "No new papers since the last check.")
+            return
+        self.check_and_deliver(notify_empty=True)
 
     def cmd_status(self, chat_id, arg):
         last = self.state.last_check or "never"
