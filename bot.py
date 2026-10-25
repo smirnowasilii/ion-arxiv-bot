@@ -271,16 +271,20 @@ def format_paper(p: Paper, cls: Classifier, abstract_chars: int = 600) -> str:
 
 
 def format_header(papers: list[Paper], cls: Classifier) -> str:
+    """Summary: per topic 'total / experimental'. A paper can count in several topics."""
     n = len(papers)
-    counts: dict[str, int] = {}
+    counts: dict[str, list[int]] = {}
     for p in papers:
+        exp = cls.is_experiment(p)
         for label in cls.labels(p):
-            counts[label] = counts.get(label, 0) + 1
-    exp = sum(cls.is_experiment(p) for p in papers)
-    lines = [f"⚛️ <b>{n} new trapped-ion paper{'s' if n != 1 else ''} on arXiv</b>"]
-    lines += [f"{esc(k)}: {v}" for k, v in sorted(counts.items(), key=lambda kv: -kv[1])]
-    if exp:
-        lines.append(f"🧪 Experimental: {exp}")
+            c = counts.setdefault(label, [0, 0])
+            c[0] += 1
+            c[1] += exp
+    exp_total = sum(cls.is_experiment(p) for p in papers)
+    lines = [f"📊 <b>{n} new trapped-ion paper{'s' if n != 1 else ''} on arXiv</b>",
+             "<i>topic: total / 🧪 experimental</i>", ""]
+    lines += [f"{esc(k)}: {t} / {e}" for k, (t, e) in sorted(counts.items(), key=lambda kv: -kv[1][0])]
+    lines += ["", f"🧪 Experimental overall: {exp_total} of {n}"]
     return "\n".join(lines)
 
 
@@ -459,8 +463,9 @@ class Bot:
         if self.mode == "compact":
             messages = format_compact(papers, self.cls)
         else:
-            messages = ([format_header(papers, self.cls)] if header else []) + \
-                       [format_paper(p, self.cls, self.abstract_chars) for p in papers]
+            # summary goes last, so it stays at the bottom of the chat
+            messages = [format_paper(p, self.cls, self.abstract_chars) for p in papers] + \
+                       ([format_header(papers, self.cls)] if header else [])
         pause = 3.1 if chat_id < 0 else 1.1  # Telegram limits groups to ~20 msg/min
         for m in messages:
             self.tg.send(chat_id, m)
