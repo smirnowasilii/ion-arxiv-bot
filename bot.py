@@ -461,7 +461,13 @@ class Bot:
         t = cfg["telegram"]
         self.allowed = {int(x) for x in t.get("allowed_user_ids") or []}
         self.default_chats = {c for c in map(parse_chat_id, t.get("default_chat_ids") or [])
-                              if c is not None} | env_chat_ids()
+                              if c is not None}
+        # chats from the TELEGRAM_CHAT_ID secret: either full paper feed, or just a status line
+        self.status_chats: set = set()
+        if t.get("env_chats_status_only", False):
+            self.status_chats = env_chat_ids() - self.default_chats
+        else:
+            self.default_chats |= env_chat_ids()
         self.mode = t.get("mode", "individual")
         self.abstract_chars = int(t.get("abstract_chars", 600))
         self.interval_h = float(cfg["schedule"].get("check_every_hours", 3))
@@ -473,7 +479,8 @@ class Bot:
         self.check_lock = threading.Lock()
 
     # ---- delivery ----
-    def chats(self) -> set[int]:
+    def chats(self) -> set:
+        """Chats that receive the papers themselves."""
         return set(self.state.subscribers) | self.default_chats
 
     def send_papers(self, chat_id: int, papers: list[Paper], header: bool = True):
@@ -489,31 +496,50 @@ class Bot:
             self.tg.send(chat_id, m)
             time.sleep(pause)
 
+    def _deliver(self, chat, fn, failures: list):
+        try:
+            fn()
+        except TelegramError as e:
+            log.error("could not deliver to %s: %s", chat, e)
+            failures.append(f"{chat}: {e}")
+            if e.code in (400, 403) and chat in self.state.subscribers:
+                with self.state.lock:
+                    self.state.subscribers.remove(chat)
+
     def check_and_deliver(self, test_days: float | None = None, notify_empty: bool | None = None) -> int:
         with self.check_lock:
-            chats = self.chats()
-            if not chats:
+            paper_chats = self.chats()
+            if not paper_chats and not self.status_chats:
                 log.info("no subscribers yet — skipping check")
                 return 0
             fresh, ids, now = collect_new(self.arxiv, self.cls, self.state, self.cfg, test_days)
             if notify_empty is None:
                 notify_empty = self.notify_empty
-            if not fresh and notify_empty:
-                stamp = now.astimezone(self.tz).strftime("%d %b, %H:%M")
-                note = f"🔍 Checked arXiv ({stamp}) — nothing new."
-            for chat in chats:
-                if not fresh and not notify_empty:
-                    break
-                try:
-                    if fresh:
-                        self.send_papers(chat, fresh)
-                    else:
-                        self.tg.send(chat, note, silent=True)
-                except TelegramError as e:
-                    log.error("could not deliver to %s: %s", chat, e)
-                    if e.code in (400, 403) and chat in self.state.subscribers:
-                        with self.state.lock:
-                            self.state.subscribers.remove(chat)
+            stamp = now.astimezone(self.tz).strftime("%d %b, %H:%M")
+            empty_note = f"🔍 Checked arXiv ({stamp}) — nothing new."
+            failures: list[str] = []
+
+            for chat in paper_chats:
+                if fresh:
+                    self._deliver(chat, lambda c=chat: self.send_papers(c, fresh), failures)
+                elif notify_empty and not self.status_chats:
+                    # no separate status chat → put the "nothing new" note in the feed itself
+                    self._deliver(chat, lambda c=chat: self.tg.send(c, empty_note, silent=True), failures)
+
+            if self.status_chats and (fresh or notify_empty or failures):
+                if fresh:
+                    exp = sum(self.cls.is_experiment(p) for p in fresh)
+                    ok = [str(c) for c in paper_chats if not any(f.startswith(f"{c}:") for f in failures)]
+                    where = ", ".join(sorted(ok)) or "nobody"
+                    status = (f"✅ Checked arXiv ({stamp}) — {len(fresh)} new paper"
+                              f"{'s' if len(fresh) != 1 else ''} ({exp} 🧪), posted to {esc(where)}.")
+                else:
+                    status = empty_note
+                if failures:
+                    status += "\n⚠️ Delivery failed:\n" + "\n".join(esc(f) for f in failures)
+                for chat in self.status_chats:
+                    self._deliver(chat, lambda c=chat: self.tg.send(c, status, silent=not failures), [])
+
             self.state.mark_seen(ids, now)
             self.state.save()
             return len(fresh)
@@ -614,7 +640,7 @@ class Bot:
         self._show(chat_id, papers, "Nothing found for that search.")
 
     def cmd_check(self, chat_id, arg):
-        if chat_id not in self.chats():
+        if chat_id not in self.chats() | self.status_chats:
             self.reply(chat_id, "This chat isn't subscribed — use /subscribe first.")
             return
         self.check_and_deliver(notify_empty=True)
@@ -697,7 +723,7 @@ def main():
     bot = Bot(cfg, State(args.state), arxiv, cls, Telegram(token))
 
     if args.mode == "once":
-        if not bot.chats():
+        if not bot.chats() and not bot.status_chats:
             sys.exit("No chats to post to: set TELEGRAM_CHAT_ID or default_chat_ids in config.yaml.")
         n = bot.check_and_deliver(test_days=args.test_days or None)
         log.info("posted %d new paper(s)", n)
