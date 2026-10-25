@@ -413,9 +413,19 @@ class Telegram:
                          link_preview_options={"is_disabled": True}, disable_notification=silent)
 
 
-def env_chat_ids() -> set[int]:
+def parse_chat_id(x) -> int | str | None:
+    """Numeric chat id, or @username of a public channel."""
+    x = str(x).strip()
+    if re.fullmatch(r"-?\d+", x):
+        return int(x)
+    if re.fullmatch(r"@?[A-Za-z][A-Za-z0-9_]{3,}", x):
+        return x if x.startswith("@") else "@" + x
+    return None
+
+
+def env_chat_ids() -> set:
     raw = os.environ.get("TELEGRAM_CHAT_ID", "")
-    return {int(x) for x in re.split(r"[,\s]+", raw) if x.strip().lstrip("-").isdigit()}
+    return {c for c in map(parse_chat_id, re.split(r"[,\s]+", raw)) if c is not None}
 
 
 # ───────────────────────────── bot ─────────────────────────────
@@ -450,7 +460,8 @@ class Bot:
         self.cfg, self.state, self.arxiv, self.cls, self.tg = cfg, state, arxiv, cls, tg
         t = cfg["telegram"]
         self.allowed = {int(x) for x in t.get("allowed_user_ids") or []}
-        self.default_chats = {int(x) for x in t.get("default_chat_ids") or []} | env_chat_ids()
+        self.default_chats = {c for c in map(parse_chat_id, t.get("default_chat_ids") or [])
+                              if c is not None} | env_chat_ids()
         self.mode = t.get("mode", "individual")
         self.abstract_chars = int(t.get("abstract_chars", 600))
         self.interval_h = float(cfg["schedule"].get("check_every_hours", 3))
@@ -472,7 +483,8 @@ class Bot:
             # summary goes last, so it stays at the bottom of the chat
             messages = [format_paper(p, self.cls, self.abstract_chars) for p in papers] + \
                        ([format_header(papers, self.cls)] if header else [])
-        pause = 3.1 if chat_id < 0 else 1.1  # Telegram limits groups to ~20 msg/min
+        private = isinstance(chat_id, int) and chat_id > 0
+        pause = 1.1 if private else 3.1  # Telegram limits groups/channels to ~20 msg/min
         for m in messages:
             self.tg.send(chat_id, m)
             time.sleep(pause)

@@ -10,7 +10,7 @@
 
 telegram:
   token_env: TELEGRAM_BOT_TOKEN   # env var that holds the token from @BotFather
-  default_chat_ids: []            # chats/channels that always receive updates, e.g. [-1001234567890]
+  default_chat_ids: ["@ion_arxiv"] # chats/channels that always receive updates (@channel or numeric id)
   allowed_user_ids: []            # if not empty, only these Telegram user ids can use commands
   mode: individual                # individual = one message per paper | compact = one digest list
   abstract_chars: 600             # abstract excerpt length in individual mode (0 = no abstract)

@@ -1,6 +1,8 @@
 # ion-arxiv-bot
 Daily arXiv digest of trapped-ion physics, delivered to Telegram.
 
+📢 **Channel: [t.me/ion_arxiv](https://t.me/ion_arxiv)** — join to get new papers.
+
 
 
 Watches arXiv for new papers on trapped ions and posts them to Telegram, tagged by topic:
